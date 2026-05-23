@@ -14,10 +14,6 @@ const log = logger.child({ component: "tools" });
 const SEARCH_TOOLS = new Set([
   "semantic_search",
   "hybrid_search",
-  "search_code",
-  "search_git_history",
-  "contextual_search",
-  "federated_search",
 ]);
 
 /**

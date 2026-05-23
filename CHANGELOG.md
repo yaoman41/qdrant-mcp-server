@@ -1,3 +1,23 @@
+## [3.3.4-mordeco.2] - 2026-05-23
+
+### Mordeco Fork — Dead Code Cleanup
+
+* **drop**: removed `src/code/` (indexer, scanner, chunker, sync — 10 files) and `src/git/` (extractor, indexer, chunker, sync — 12 files)
+* **drop**: removed dead tool files `src/tools/{code,git-history,federated,federated.test}.ts` (4 files)
+* **drop**: removed dead Zod schemas from `src/tools/schemas.ts` (IndexCodebaseSchema, SearchCodeSchema, ReindexChangesSchema, GetIndexStatusSchema, ClearIndexSchema, IndexGitHistorySchema, SearchGitHistorySchema, IndexNewCommitsSchema, GetGitIndexStatusSchema, ClearGitIndexSchema, ContextualSearchSchema, FederatedSearchSchema)
+* **clean**: removed dead tool names from `SEARCH_TOOLS` set in `src/tools/logging.ts` (`search_code`, `search_git_history`, `contextual_search`, `federated_search`)
+* **docs**: rewrote README.md — added Mordeco Fork Notes section, stripped all code-search / git-history / advanced-search sections (28 dropped-tool references removed)
+* Result: tsc 0 error, test count reduced from 748 to ~400 (dead tests gone), 8 kept tools fully covered
+
+## [3.3.4-mordeco.1] - 2026-05-23
+
+### Mordeco Fork — Initial Fork Setup
+
+* **drop**: removed `tree-sitter` native dependency for Node 24 compatibility
+* **drop**: dropped 7 tools (index_codebase, search_code, reindex_changes, get_index_status, clear_index, index_git_history, search_git_history, index_new_commits, get_git_index_status, clear_git_index, contextual_search, federated_search)
+* **keep**: 8 core tools for Qdrant vector + text search (create_collection, list_collections, get_collection_info, delete_collection, add_documents, delete_documents, semantic_search, hybrid_search)
+* Forked from mhalder/qdrant-mcp-server @ v3.3.4
+
 ## [3.3.4](https://github.com/mhalder/qdrant-mcp-server/compare/v3.3.3...v3.3.4) (2026-05-16)
 
 ### Bug Fixes

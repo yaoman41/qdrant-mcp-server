@@ -5,17 +5,33 @@
 
 A Model Context Protocol (MCP) server providing semantic search capabilities using Qdrant vector database with multiple embedding providers.
 
+## Mordeco Fork Notes
+
+This is a Mordeco-internal fork of [mhalder/qdrant-mcp-server](https://github.com/mhalder/qdrant-mcp-server).
+
+**What's dropped vs upstream**:
+- All `tree-sitter` based code-search tools (`index_codebase`, `search_code`, `reindex_changes`, `get_index_status`, `clear_index`)
+- All git-history indexing tools (`index_git_history`, `search_git_history`, `index_new_commits`, `get_git_index_status`, `clear_git_index`)
+- `federated_search` / `contextual_search`
+- Entire `src/code/` and `src/git/` directories (dead source removed)
+
+**What's kept**: 8 core tools — `create_collection` / `list_collections` / `get_collection_info` / `delete_collection` / `add_documents` / `delete_documents` / `semantic_search` / `hybrid_search`
+
+**Why**: Mordeco only needs pure vector + text search for `_knowledge/` SOPs. Code-search & git-history out of scope. The tree-sitter native module also had Node 24 compatibility issues that prompted this fork.
+
+**Installation**: No `CXXFLAGS` flag needed — tree-sitter dependency dropped. Plain `npm install` works on Node 22 and 24.
+
+**Maintenance**: Minimal — pull upstream changes only for security patches in kept tools. Upstream PR opportunity: the `CharacterChunker` fallback approach for dropping tree-sitter could be contributed back.
+
+---
+
 ## Features
 
 - **Zero Setup**: Works out of the box with Ollama - no API keys required
 - **Privacy-First**: Local embeddings and vector storage - data never leaves your machine
-- **Code Vectorization**: Intelligent codebase indexing with AST-aware chunking and semantic code search
-- **Git History Search**: Index commit history for semantic search over past changes, fixes, and patterns
-- **Advanced Search**: Contextual search (code + git with correlations) and federated search across multiple repositories
 - **Multiple Providers**: Ollama (default), OpenAI, Cohere, and Voyage AI
 - **Hybrid Search**: Combine semantic and keyword search for better results
 - **Semantic Search**: Natural language search with metadata filtering
-- **Incremental Indexing**: Efficient updates - only re-index changed files
 - **Configurable Prompts**: Create custom prompts for guided workflows without code changes
 - **Rate Limiting**: Intelligent throttling with exponential backoff
 - **Full CRUD**: Create, search, and manage collections and documents
@@ -28,28 +44,19 @@ A Model Context Protocol (MCP) server providing semantic search capabilities usi
 ### Prerequisites
 
 - Node.js 22.x or 24.x
-- Podman or Docker with Compose support
+- Podman or Docker with Compose support (for running Qdrant locally)
 
 ### Installation
 
 ```bash
 # Clone and install
-git clone https://github.com/mhalder/qdrant-mcp-server.git
+git clone https://github.com/yaoman41/qdrant-mcp-server.git
 cd qdrant-mcp-server
-
-# Node 22.x
 npm install
 
-# Node 24.x (requires C++20 flag for native module compilation)
-CXXFLAGS='-std=c++20' npm install
-
-# Start services (choose one)
+# Start Qdrant (choose one)
 podman compose up -d   # Using Podman
 docker compose up -d   # Using Docker
-
-# Pull the embedding model
-podman exec ollama ollama pull nomic-embed-text  # Podman
-docker exec ollama ollama pull nomic-embed-text  # Docker
 
 # Build
 npm run build
@@ -89,7 +96,7 @@ Create a collection called "notes" and add a document about machine learning
 
 #### Remote Setup (HTTP transport)
 
-> **⚠️ Security Warning**: When deploying the HTTP transport in production:
+> **Warning**: When deploying the HTTP transport in production:
 >
 > - **Always** run behind a reverse proxy (nginx, Caddy) with HTTPS
 > - Implement authentication/authorization at the proxy level
@@ -157,33 +164,6 @@ See [Advanced Configuration](#advanced-configuration) section below for all opti
 | `hybrid_search`    | Hybrid search combining semantic and keyword (BM25) search with RRF           |
 | `delete_documents` | Delete specific documents by ID                                               |
 
-### Code Vectorization
-
-| Tool               | Description                                                                |
-| ------------------ | -------------------------------------------------------------------------- |
-| `index_codebase`   | Index a codebase for semantic code search with AST-aware chunking          |
-| `search_code`      | Search indexed codebase using natural language queries                     |
-| `reindex_changes`  | Incrementally re-index only changed files (detects added/modified/deleted) |
-| `get_index_status` | Get indexing status and statistics for a codebase                          |
-| `clear_index`      | Delete all indexed data for a codebase                                     |
-
-### Git History
-
-| Tool                   | Description                                                              |
-| ---------------------- | ------------------------------------------------------------------------ |
-| `index_git_history`    | Index git commit history for semantic search over past changes and fixes |
-| `search_git_history`   | Search indexed git history using natural language queries                |
-| `index_new_commits`    | Incrementally index only new commits since last indexing                 |
-| `get_git_index_status` | Get indexing status and statistics for a repository's git history        |
-| `clear_git_index`      | Delete all indexed git history data for a repository                     |
-
-### Advanced Search
-
-| Tool                | Description                                                                   |
-| ------------------- | ----------------------------------------------------------------------------- |
-| `contextual_search` | Combined code + git history search with file-commit correlations              |
-| `federated_search`  | Search across multiple repositories with Reciprocal Rank Fusion (RRF) ranking |
-
 ### Resources
 
 - `qdrant://collections` - List all collections
@@ -244,12 +224,6 @@ See [`prompts.example.json`](prompts.example.json) for ready-to-use prompts incl
 - `migrate_to_hybrid` - Collection migration guide
 - `debug_search_quality` - Troubleshoot poor search results
 - `build_knowledge_base` - Structured documentation with metadata
-- `index_git_history` - Index repository commit history for semantic search
-- `search_project_history` - Search git history to understand feature implementations
-- `investigate_code_with_history` - Deep dive into code with contextual search
-- `cross_repo_search` - Search patterns across multiple repositories
-- `trace_feature_evolution` - Track how features evolved over time
-- `security_audit_search` - Find security-related code and fixes
 
 ### Template Syntax
 
@@ -258,251 +232,6 @@ Templates use `{{variable}}` placeholders:
 - Required arguments must be provided
 - Optional arguments use defaults if not specified
 - Unknown variables are left as-is in the output
-
-## Code Vectorization
-
-Intelligently index and search your codebase using semantic code search. Perfect for AI-assisted development, code exploration, and understanding large codebases.
-
-### Features
-
-- **AST-Aware Chunking**: Intelligent code splitting at function/class boundaries using tree-sitter
-- **Multi-Language Support**: 35+ file types including TypeScript, Python, Java, Go, Rust, C++, and more
-- **Incremental Updates**: Only re-index changed files for fast updates
-- **Smart Ignore Patterns**: Respects .gitignore, .dockerignore, and custom .contextignore files
-- **Semantic Search**: Natural language queries to find relevant code
-- **Metadata Filtering**: Filter by file type, path patterns, or language
-- **Local-First**: All processing happens locally - your code never leaves your machine
-
-### Quick Start
-
-**1. Index your codebase:**
-
-```bash
-# Via Claude Code MCP tool
-/mcp__qdrant__index_codebase /path/to/your/project
-```
-
-**2. Search your code:**
-
-```bash
-# Natural language search
-/mcp__qdrant__search_code /path/to/your/project "authentication middleware"
-
-# Filter by file type
-/mcp__qdrant__search_code /path/to/your/project "database schema" --fileTypes .ts,.js
-
-# Filter by path pattern
-/mcp__qdrant__search_code /path/to/your/project "API endpoints" --pathPattern src/api/**
-```
-
-**3. Update after changes:**
-
-```bash
-# Incrementally re-index only changed files
-/mcp__qdrant__reindex_changes /path/to/your/project
-```
-
-### Usage Examples
-
-#### Index a TypeScript Project
-
-```typescript
-// The MCP tool automatically:
-// 1. Scans all .ts, .tsx, .js, .jsx files
-// 2. Respects .gitignore patterns (skips node_modules, dist, etc.)
-// 3. Chunks code at function/class boundaries
-// 4. Generates embeddings using your configured provider
-// 5. Stores in Qdrant with metadata (file path, line numbers, language)
-
-index_codebase({
-  path: "/workspace/my-app",
-  forceReindex: false, // Set to true to re-index from scratch
-});
-
-// Output:
-// ✓ Indexed 247 files (1,823 chunks) in 45.2s
-```
-
-#### Search for Authentication Code
-
-```typescript
-search_code({
-  path: "/workspace/my-app",
-  query: "how does user authentication work?",
-  limit: 5,
-});
-
-// Results include file path, line numbers, and code snippets:
-// [
-//   {
-//     filePath: "src/auth/middleware.ts",
-//     startLine: 15,
-//     endLine: 42,
-//     content: "export async function authenticateUser(req: Request) { ... }",
-//     score: 0.89,
-//     language: "typescript"
-//   },
-//   ...
-// ]
-```
-
-#### Search with Filters
-
-```typescript
-// Only search TypeScript files
-search_code({
-  path: "/workspace/my-app",
-  query: "error handling patterns",
-  fileTypes: [".ts", ".tsx"],
-  limit: 10,
-});
-
-// Only search in specific directories
-search_code({
-  path: "/workspace/my-app",
-  query: "API route handlers",
-  pathPattern: "src/api/**",
-  limit: 10,
-});
-```
-
-#### Incremental Re-indexing
-
-```typescript
-// After making changes to your codebase
-reindex_changes({
-  path: "/workspace/my-app",
-});
-
-// Output:
-// ✓ Updated: +3 files added, ~5 files modified, -1 files deleted
-// ✓ Chunks: +47 added, -23 deleted in 8.3s
-```
-
-#### Check Indexing Status
-
-```typescript
-get_index_status({
-  path: "/workspace/my-app",
-});
-
-// Output:
-// {
-//   status: "indexed",      // "not_indexed" | "indexing" | "indexed"
-//   isIndexed: true,        // deprecated: use status instead
-//   collectionName: "code_a3f8d2e1",
-//   chunksCount: 1823,
-//   filesCount: 247,
-//   lastUpdated: "2025-01-30T10:15:00Z",
-//   languages: ["typescript", "javascript", "json"]
-// }
-```
-
-### Supported Languages
-
-**Programming Languages** (35+ file types):
-
-- **Web**: TypeScript, JavaScript, Vue, Svelte
-- **Backend**: Python, Java, Go, Rust, Ruby, PHP
-- **Systems**: C, C++, C#
-- **Mobile**: Swift, Kotlin, Dart
-- **Functional**: Scala, Clojure, Haskell, OCaml
-- **Scripting**: Bash, Shell, Fish
-- **Data**: SQL, GraphQL, Protocol Buffers
-- **Config**: JSON, YAML, TOML, XML, Markdown
-
-See [configuration](#code-vectorization-configuration) for full list and customization options.
-
-### Custom Ignore Patterns
-
-Create a `.contextignore` file in your project root to specify additional patterns to ignore:
-
-```gitignore
-# .contextignore
-**/test/**
-**/*.test.ts
-**/*.spec.ts
-**/fixtures/**
-**/mocks/**
-**/__tests__/**
-```
-
-### Best Practices
-
-1. **Index Once, Update Incrementally**: Use `index_codebase` for initial indexing, then `reindex_changes` for updates
-2. **Use Filters**: Narrow search scope with `fileTypes` and `pathPattern` for better results
-3. **Meaningful Queries**: Use natural language that describes what you're looking for (e.g., "database connection pooling" instead of "db")
-4. **Check Status First**: Use `get_index_status` to verify a codebase is indexed before searching
-5. **Local Embedding**: Use Ollama (default) to keep everything local and private
-
-### Performance
-
-Typical performance on a modern laptop (Apple M1/M2 or similar):
-
-| Codebase Size     | Files | Indexing Time | Search Latency |
-| ----------------- | ----- | ------------- | -------------- |
-| Small (10k LOC)   | 50    | ~10s          | <100ms         |
-| Medium (100k LOC) | 500   | ~2min         | <200ms         |
-| Large (500k LOC)  | 2,500 | ~10min        | <500ms         |
-
-**Note**: Indexing time varies based on embedding provider. Ollama (local) is fastest for initial indexing.
-
-## Git History Search
-
-Index and search your repository's git commit history using natural language. Perfect for finding past fixes, understanding change patterns, and learning from previous work.
-
-### Features
-
-- **Semantic Commit Search**: Find commits by describing what you're looking for in natural language
-- **Conventional Commit Classification**: Automatic classification of commits (feat, fix, refactor, etc.)
-- **Incremental Updates**: Only index new commits for efficient updates
-- **Rich Filtering**: Filter by commit type, author, or date range
-- **Metadata Extraction**: Includes files changed, insertions/deletions, and full commit context
-
-### Quick Start
-
-**1. Index your repository's git history:**
-
-```bash
-# Via Claude Code MCP tool
-/mcp__qdrant__index_git_history /path/to/your/repo
-```
-
-**2. Search for relevant commits:**
-
-```bash
-# Natural language search
-/mcp__qdrant__search_git_history /path/to/your/repo "fix authentication bug"
-
-# Filter by commit type
-/mcp__qdrant__search_git_history /path/to/your/repo "database optimization" --commitTypes fix,perf
-
-# Filter by author
-/mcp__qdrant__search_git_history /path/to/your/repo "API changes" --authors "john@example.com"
-```
-
-**3. Keep index up to date:**
-
-```bash
-# Incrementally index only new commits
-/mcp__qdrant__index_new_commits /path/to/your/repo
-```
-
-### Use Cases
-
-- **Finding Similar Fixes**: "How was the null pointer issue in auth fixed before?"
-- **Understanding Patterns**: "What refactoring was done to the database layer?"
-- **Learning from History**: "Show me examples of API endpoint implementations"
-- **Code Archaeology**: "What changes were made to the payment system last year?"
-
-## Advanced Search
-
-Combine code and git history search for deeper codebase understanding. Requires repositories to be indexed with both `index_codebase` and `index_git_history` first.
-
-- **Contextual Search**: Query code + git history together with automatic file-commit correlations
-- **Federated Search**: Search across multiple repositories with RRF ranking
-
-See **[Advanced Search Examples](examples/advanced-search/)** for detailed usage, workflows, and scenarios.
 
 ## Examples
 
@@ -513,8 +242,6 @@ See [examples/](examples/) directory for detailed guides:
 - **[Knowledge Base](examples/knowledge-base/)** - Structured documentation with metadata
 - **[Advanced Filtering](examples/filters/)** - Complex boolean filters
 - **[Rate Limiting](examples/rate-limiting/)** - Batch processing with cloud providers
-- **[Code Search](examples/code-search/)** - Index codebases and semantic code search
-- **[Advanced Search](examples/advanced-search/)** - Contextual and federated search across repositories
 
 ## Advanced Configuration
 
@@ -546,33 +273,6 @@ See [examples/](examples/) directory for detailed guides:
 | `COHERE_API_KEY`                    | Cohere API key           | -                 |
 | `VOYAGE_API_KEY`                    | Voyage AI API key        | -                 |
 
-#### Code Vectorization Configuration
-
-| Variable                 | Description                                  | Default |
-| ------------------------ | -------------------------------------------- | ------- |
-| `CODE_CHUNK_SIZE`        | Maximum chunk size in characters             | 2500    |
-| `CODE_CHUNK_OVERLAP`     | Overlap between chunks in characters         | 300     |
-| `CODE_ENABLE_AST`        | Enable AST-aware chunking (tree-sitter)      | true    |
-| `CODE_BATCH_SIZE`        | Number of chunks to embed in one batch       | 100     |
-| `CODE_CUSTOM_EXTENSIONS` | Additional file extensions (comma-separated) | -       |
-| `CODE_CUSTOM_IGNORE`     | Additional ignore patterns (comma-separated) | -       |
-| `CODE_DEFAULT_LIMIT`     | Default search result limit                  | 5       |
-
-#### Git History Configuration
-
-| Variable                   | Description                              | Default |
-| -------------------------- | ---------------------------------------- | ------- |
-| `GIT_MAX_COMMITS`          | Maximum commits to index per run         | 5000    |
-| `GIT_INCLUDE_FILES`        | Include changed file list in chunks      | true    |
-| `GIT_INCLUDE_DIFF`         | Include truncated diff in chunks         | true    |
-| `GIT_MAX_DIFF_SIZE`        | Maximum diff size in bytes per commit    | 5000    |
-| `GIT_TIMEOUT`              | Timeout for git commands (ms)            | 300000  |
-| `GIT_MAX_CHUNK_SIZE`       | Maximum characters per chunk             | 3000    |
-| `GIT_BATCH_SIZE`           | Number of chunks to embed in one batch   | 100     |
-| `GIT_BATCH_RETRY_ATTEMPTS` | Retry attempts for failed batches        | 3       |
-| `GIT_SEARCH_LIMIT`         | Default search result limit              | 10      |
-| `GIT_ENABLE_HYBRID`        | Enable hybrid search with sparse vectors | true    |
-
 ### Provider Comparison
 
 | Provider   | Models                                                          | Dimensions     | Rate Limit | Notes                |
@@ -589,22 +289,17 @@ See [examples/](examples/) directory for detailed guides:
 
 ## Troubleshooting
 
-| Issue                          | Solution                                                                                  |
-| ------------------------------ | ----------------------------------------------------------------------------------------- |
-| **Qdrant not running**         | `podman compose up -d` or `docker compose up -d`                                          |
-| **Collection missing**         | Create collection first before adding documents                                           |
-| **Ollama not running**         | Verify with `curl http://localhost:11434`, start with `podman compose up -d`              |
-| **Model missing**              | `podman exec ollama ollama pull nomic-embed-text` or `docker exec ollama ollama pull ...` |
-| **Rate limit errors**          | Adjust `EMBEDDING_MAX_REQUESTS_PER_MINUTE` to match your provider tier                    |
-| **API key errors**             | Verify correct API key in environment configuration                                       |
-| **Qdrant unauthorized**        | Set `QDRANT_API_KEY` environment variable for secured instances                           |
-| **Filter errors**              | Ensure Qdrant filter format, check field names match metadata                             |
-| **Codebase not indexed**       | Run `index_codebase` before `search_code`                                                 |
-| **Slow indexing**              | Use Ollama (local) for faster indexing, or increase `CODE_BATCH_SIZE`                     |
-| **Files not found**            | Check `.gitignore` and `.contextignore` patterns                                          |
-| **Search returns no results**  | Try broader queries, check if codebase is indexed with `get_index_status`                 |
-| **Out of memory during index** | Reduce `CODE_CHUNK_SIZE` or `CODE_BATCH_SIZE`                                             |
-| **Node 24 tree-sitter error**  | Run `CXXFLAGS='-std=c++20' npm install` - Node 24 requires C++20 for native modules       |
+| Issue                         | Solution                                                                    |
+| ----------------------------- | --------------------------------------------------------------------------- |
+| **Qdrant not running**        | `podman compose up -d` or `docker compose up -d`                            |
+| **Collection missing**        | Create collection first before adding documents                             |
+| **Ollama not running**        | Verify with `curl http://localhost:11434`, start with `podman compose up -d` |
+| **Model missing**             | `podman exec ollama ollama pull nomic-embed-text`                           |
+| **Rate limit errors**         | Adjust `EMBEDDING_MAX_REQUESTS_PER_MINUTE` to match your provider tier      |
+| **API key errors**            | Verify correct API key in environment configuration                         |
+| **Qdrant unauthorized**       | Set `QDRANT_API_KEY` environment variable for secured instances             |
+| **Filter errors**             | Ensure Qdrant filter format, check field names match metadata               |
+| **Search returns no results** | Try broader queries or check collection exists with `list_collections`      |
 
 ## Development
 
@@ -618,12 +313,7 @@ npm run test:coverage # Coverage report
 
 ### Testing
 
-**771 tests** across 28 test files with **97%+ coverage**:
-
-- **Unit Tests**: QdrantManager (56), Ollama (41), OpenAI (25), Cohere (29), Voyage (31), Factory (43), Prompts (50), Transport (15), MCP Server (19)
-- **Integration Tests**: Code indexer (56), scanner (15), chunker (24), synchronizer (42), snapshot (26), merkle tree (28)
-- **Git History Tests**: Git extractor (28), extractor integration (11), chunker (30), indexer (42), synchronizer (18)
-- **Advanced Search Tests**: Federated tools (30) - normalizeScores, calculateRRFScore, buildCorrelations, contextual_search, federated_search
+Tests cover all 8 kept tools across collection management, document operations, search, embeddings, and transport layers.
 
 **CI/CD**: GitHub Actions runs build, type-check, and tests on Node.js 22.x and 24.x for every push/PR.
 
@@ -637,10 +327,4 @@ Contributions welcome! See [CONTRIBUTING.md](CONTRIBUTING.md) for:
 
 **Automated releases**: Semantic versioning via conventional commits - `feat:` → minor, `fix:` → patch, `BREAKING CHANGE:` → major.
 
-## Acknowledgments
-
-The code vectorization feature is inspired by and builds upon concepts from the excellent [claude-context](https://github.com/zilliztech/claude-context) project (MIT License, Copyright 2025 Zilliz).
-
 ## License
-
-MIT - see [LICENSE](LICENSE) file.

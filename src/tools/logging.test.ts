@@ -124,11 +124,11 @@ describe("withToolLogging", () => {
       content: [{ type: "text", text: "Found 0 result(s):\n" }],
     });
 
-    const wrapped = withToolLogging("search_code", handler);
-    await wrapped({ path: "/test", query: "test" });
+    const wrapped = withToolLogging("hybrid_search", handler);
+    await wrapped({ collection: "test", query: "test" });
 
     expect(mockLog.warn).toHaveBeenCalledWith(
-      expect.objectContaining({ tool: "search_code" }),
+      expect.objectContaining({ tool: "hybrid_search" }),
       "Tool completed with no results"
     );
   });
@@ -138,12 +138,12 @@ describe("withToolLogging", () => {
       content: [{ type: "text", text: "No results found for query: test" }],
     });
 
-    const wrapped = withToolLogging("get_index_status", handler);
-    await wrapped({ path: "/test" });
+    const wrapped = withToolLogging("get_collection_info", handler);
+    await wrapped({ name: "test" });
 
-    // Should log info, not warn, because get_index_status is not a search tool
+    // Should log info, not warn, because get_collection_info is not a search tool
     expect(mockLog.info).toHaveBeenCalledWith(
-      expect.objectContaining({ tool: "get_index_status" }),
+      expect.objectContaining({ tool: "get_collection_info" }),
       "Tool completed"
     );
     expect(mockLog.warn).not.toHaveBeenCalled();
@@ -154,11 +154,11 @@ describe("withToolLogging", () => {
       content: [{ type: "text", text: "Found 5 result(s):\n..." }],
     });
 
-    const wrapped = withToolLogging("search_code", handler);
-    await wrapped({ path: "/test", query: "test" });
+    const wrapped = withToolLogging("semantic_search", handler);
+    await wrapped({ collection: "test", query: "test" });
 
     expect(mockLog.info).toHaveBeenCalledWith(
-      expect.objectContaining({ tool: "search_code" }),
+      expect.objectContaining({ tool: "semantic_search" }),
       "Tool completed"
     );
     expect(mockLog.warn).not.toHaveBeenCalled();
@@ -182,8 +182,8 @@ describe("withToolLogging", () => {
       content: [{ type: "text", text: "ok" }],
     });
 
-    const wrapped = withToolLogging("index_codebase", handler);
-    const args = { path: "/test" };
+    const wrapped = withToolLogging("add_documents", handler);
+    const args = { collection: "test", documents: [] };
     const extra = { _meta: {} };
     await wrapped(args, extra);
 
@@ -195,11 +195,11 @@ describe("withToolLogging", () => {
       content: [],
     });
 
-    const wrapped = withToolLogging("search_git_history", handler);
-    await wrapped({ path: "/test", query: "test" });
+    const wrapped = withToolLogging("semantic_search", handler);
+    await wrapped({ collection: "test", query: "test" });
 
     expect(mockLog.warn).toHaveBeenCalledWith(
-      expect.objectContaining({ tool: "search_git_history" }),
+      expect.objectContaining({ tool: "semantic_search" }),
       "Tool completed with no results"
     );
   });
