@@ -8,19 +8,7 @@ import { StdioServerTransport } from "@modelcontextprotocol/sdk/server/stdio.js"
 import { StreamableHTTPServerTransport } from "@modelcontextprotocol/sdk/server/streamableHttp.js";
 import Bottleneck from "bottleneck";
 import express from "express";
-import {
-  DEFAULT_BATCH_SIZE,
-  DEFAULT_CHUNK_OVERLAP,
-  DEFAULT_CHUNK_SIZE,
-  DEFAULT_CODE_EXTENSIONS,
-  DEFAULT_IGNORE_PATTERNS,
-  DEFAULT_SEARCH_LIMIT,
-} from "./code/config.js";
-import { CodeIndexer } from "./code/indexer.js";
-import type { CodeConfig } from "./code/types.js";
 import { EmbeddingProviderFactory } from "./embeddings/factory.js";
-import { DEFAULT_GIT_CONFIG, GitHistoryIndexer } from "./git/index.js";
-import type { GitConfig } from "./git/types.js";
 import logger from "./logger.js";
 import { loadPromptsConfig, type PromptsConfig } from "./prompts/index.js";
 import { registerAllPrompts } from "./prompts/register.js";
@@ -165,49 +153,7 @@ logger.info(
   "Embedding provider initialized"
 );
 
-// Initialize code indexer
-const codeConfig: CodeConfig = {
-  chunkSize: parseInt(process.env.CODE_CHUNK_SIZE || String(DEFAULT_CHUNK_SIZE), 10),
-  chunkOverlap: parseInt(process.env.CODE_CHUNK_OVERLAP || String(DEFAULT_CHUNK_OVERLAP), 10),
-  enableASTChunking: process.env.CODE_ENABLE_AST !== "false",
-  supportedExtensions: DEFAULT_CODE_EXTENSIONS,
-  ignorePatterns: DEFAULT_IGNORE_PATTERNS,
-  batchSize: parseInt(process.env.CODE_BATCH_SIZE || String(DEFAULT_BATCH_SIZE), 10),
-  defaultSearchLimit: parseInt(process.env.CODE_SEARCH_LIMIT || String(DEFAULT_SEARCH_LIMIT), 10),
-  enableHybridSearch: process.env.CODE_ENABLE_HYBRID === "true",
-};
-
-const codeIndexer = new CodeIndexer(qdrant, embeddings, codeConfig);
-logger.debug({ codeConfig }, "Code indexer configured");
-
-// Initialize git history indexer
-const gitConfig: GitConfig = {
-  maxCommits: parseInt(process.env.GIT_MAX_COMMITS || String(DEFAULT_GIT_CONFIG.maxCommits), 10),
-  includeFileList: process.env.GIT_INCLUDE_FILES !== "false",
-  includeDiff: process.env.GIT_INCLUDE_DIFF !== "false",
-  maxDiffSize: parseInt(
-    process.env.GIT_MAX_DIFF_SIZE || String(DEFAULT_GIT_CONFIG.maxDiffSize),
-    10
-  ),
-  gitTimeout: parseInt(process.env.GIT_TIMEOUT || String(DEFAULT_GIT_CONFIG.gitTimeout), 10),
-  maxChunkSize: parseInt(
-    process.env.GIT_MAX_CHUNK_SIZE || String(DEFAULT_GIT_CONFIG.maxChunkSize),
-    10
-  ),
-  batchSize: parseInt(process.env.GIT_BATCH_SIZE || String(DEFAULT_GIT_CONFIG.batchSize), 10),
-  batchRetryAttempts: parseInt(
-    process.env.GIT_BATCH_RETRY_ATTEMPTS || String(DEFAULT_GIT_CONFIG.batchRetryAttempts),
-    10
-  ),
-  defaultSearchLimit: parseInt(
-    process.env.GIT_SEARCH_LIMIT || String(DEFAULT_GIT_CONFIG.defaultSearchLimit),
-    10
-  ),
-  enableHybridSearch: process.env.GIT_ENABLE_HYBRID !== "false",
-};
-
-const gitHistoryIndexer = new GitHistoryIndexer(qdrant, embeddings, gitConfig);
-logger.debug({ gitConfig }, "Git history indexer configured");
+// Mordeco fork: code indexer + git history indexer removed (tree-sitter dropped)
 
 // Load prompts configuration if file exists
 let promptsConfig: PromptsConfig | null = null;
@@ -236,8 +182,6 @@ function createAndConfigureServer(): McpServer {
     registerAllTools(server, {
       qdrant,
       embeddings,
-      codeIndexer,
-      gitHistoryIndexer,
     });
 
     // Register all resources

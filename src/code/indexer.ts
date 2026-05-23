@@ -13,7 +13,7 @@ import { BM25SparseVectorGenerator } from "../embeddings/sparse.js";
 import { normalizeRemoteUrl } from "../git/extractor.js";
 import logger from "../logger.js";
 import type { QdrantManager } from "../qdrant/client.js";
-import { TreeSitterChunker } from "./chunker/tree-sitter-chunker.js";
+import { CharacterChunker } from "./chunker/character-chunker.js";
 import { MetadataExtractor } from "./metadata.js";
 import { FileScanner } from "./scanner.js";
 import { FileSynchronizer } from "./sync/synchronizer.js";
@@ -138,7 +138,7 @@ export class CodeIndexer {
       await this.storeIndexingMarker(collectionName, false);
 
       // 3. Process files and create chunks
-      const chunker = new TreeSitterChunker({
+      const chunker = new CharacterChunker({
         chunkSize: this.config.chunkSize,
         chunkOverlap: this.config.chunkOverlap,
         maxChunkSize: this.config.chunkSize * 2,
@@ -584,7 +584,7 @@ export class CodeIndexer {
         return stats;
       }
 
-      const chunker = new TreeSitterChunker({
+      const chunker = new CharacterChunker({
         chunkSize: this.config.chunkSize,
         chunkOverlap: this.config.chunkOverlap,
         maxChunkSize: this.config.chunkSize * 2,

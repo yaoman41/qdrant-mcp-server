@@ -1,7 +1,7 @@
 {
-  "name": "@mhalder/qdrant-mcp-server",
-  "version": "3.3.4",
-  "description": "MCP server for semantic search using local Qdrant and Ollama (default) with support for OpenAI, Cohere, and Voyage AI",
+  "name": "@mordeco/qdrant-mcp-server",
+  "version": "3.3.4-mordeco.1",
+  "description": "MCP server for semantic search using Qdrant. Mordeco fork: tree-sitter dependency removed for Node 24 compatibility (code-indexing / git-history tools dropped, keeps collection + document + vector/hybrid search tools).",
   "type": "module",
   "bin": {
     "qdrant-mcp-server": "build/index.js"
@@ -23,10 +23,10 @@
     "semantic-search",
     "embeddings"
   ],
-  "author": "mhalder",
+  "author": "mhalder (upstream) / Mordeco (fork)",
   "license": "MIT",
   "engines": {
-    "node": ">=22.0.0 <25.0.0"
+    "node": ">=22.0.0"
   },
   "repository": {
     "type": "git",
@@ -35,9 +35,6 @@
   "publishConfig": {
     "access": "public",
     "provenance": true
-  },
-  "overrides": {
-    "tree-sitter": "^0.25.0"
   },
   "dependencies": {
     "@modelcontextprotocol/sdk": "^1.26.0",
@@ -49,14 +46,6 @@
     "openai": "^6.18.0",
     "picomatch": "^4.0.3",
     "pino": "^10.3.0",
-    "tree-sitter": "^0.25.0",
-    "tree-sitter-bash": "^0.25.1",
-    "tree-sitter-go": "^0.25.0",
-    "tree-sitter-java": "^0.23.5",
-    "tree-sitter-javascript": "^0.25.0",
-    "tree-sitter-python": "^0.25.0",
-    "tree-sitter-rust": "^0.24.0",
-    "tree-sitter-typescript": "^0.23.2",
     "zod": "^4.3.6"
   },
   "devDependencies": {
