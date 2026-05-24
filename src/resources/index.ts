@@ -4,6 +4,7 @@
 
 import { type McpServer, ResourceTemplate } from "@modelcontextprotocol/sdk/server/mcp.js";
 import type { QdrantManager } from "../qdrant/client.js";
+import { safeJsonStringify } from "../util/safe-json.js";
 
 /**
  * Register all MCP resources on the server
@@ -25,7 +26,7 @@ export function registerAllResources(server: McpServer, qdrant: QdrantManager): 
           {
             uri: uri.href,
             mimeType: "application/json",
-            text: JSON.stringify(collections, null, 2),
+            text: safeJsonStringify(collections),
           },
         ],
       };
@@ -64,7 +65,7 @@ export function registerAllResources(server: McpServer, qdrant: QdrantManager): 
           {
             uri: uri.href,
             mimeType: "application/json",
-            text: JSON.stringify(info, null, 2),
+            text: safeJsonStringify(info),
           },
         ],
       };

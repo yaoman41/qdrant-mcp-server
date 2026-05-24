@@ -7,6 +7,7 @@ import type { EmbeddingProvider } from "../embeddings/base.js";
 import { BM25SparseVectorGenerator } from "../embeddings/sparse.js";
 import logger from "../logger.js";
 import type { QdrantManager } from "../qdrant/client.js";
+import { safeJsonStringify } from "../util/safe-json.js";
 import { withToolLogging } from "./logging.js";
 import * as schemas from "./schemas.js";
 
@@ -59,7 +60,7 @@ export function registerSearchTools(server: McpServer, deps: SearchToolDependenc
       const results = await qdrant.search(collection, embedding, limit || 5, filter);
 
       return {
-        content: [{ type: "text", text: JSON.stringify(results, null, 2) }],
+        content: [{ type: "text", text: safeJsonStringify(results) }],
       };
     })
   );
@@ -120,7 +121,7 @@ export function registerSearchTools(server: McpServer, deps: SearchToolDependenc
       );
 
       return {
-        content: [{ type: "text", text: JSON.stringify(results, null, 2) }],
+        content: [{ type: "text", text: safeJsonStringify(results) }],
       };
     })
   );
