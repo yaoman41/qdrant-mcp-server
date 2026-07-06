@@ -2,6 +2,57 @@ import { createHash } from "node:crypto";
 import { QdrantClient } from "@qdrant/js-client-rest";
 import logger from "../logger.js";
 
+/**
+ * Connection-level errors that are safe to retry: the request never reached Qdrant,
+ * so retrying is safe even for writes. Covers the intermittent macOS dual-NIC
+ * EHOSTUNREACH (two interfaces on the same subnet → transient ARP-reject route) and
+ * undici connect timeouts (UND_ERR_*).
+ */
+const TRANSIENT_NET_CODES = new Set([
+  "EHOSTUNREACH",
+  "ENETUNREACH",
+  "ECONNREFUSED",
+  "ECONNRESET",
+  "ETIMEDOUT",
+  "EPIPE",
+  "EAI_AGAIN",
+]);
+
+function errCode(error: any): string | undefined {
+  const c = error?.code ?? error?.cause?.code ?? error?.errno;
+  return c == null ? undefined : String(c);
+}
+
+/** True for intermittent connection-level failures that are safe to retry. */
+function isTransientNetworkError(error: any): boolean {
+  const codes = [error?.code, error?.cause?.code, error?.errno]
+    .filter((c) => c != null)
+    .map(String);
+  return codes.some((c) => TRANSIENT_NET_CODES.has(c) || c.startsWith("UND_ERR_"));
+}
+
+function httpStatus(error: any): number | undefined {
+  const s = error?.status ?? error?.response?.status ?? error?.statusCode;
+  return typeof s === "number" ? s : undefined;
+}
+
+/**
+ * True ONLY for a genuine "collection not found" (HTTP 404 / not-found message).
+ * A network/auth/server error must NOT be classified as not-found — otherwise a broken
+ * connection gets mislabelled as a deleted collection.
+ */
+function isNotFoundError(error: any): boolean {
+  if (httpStatus(error) === 404) return true;
+  const msg = String(error?.message ?? error ?? "").toLowerCase();
+  return (
+    msg.includes("not found") || msg.includes("doesn't exist") || msg.includes("does not exist")
+  );
+}
+
+function sleep(ms: number): Promise<void> {
+  return new Promise((resolve) => setTimeout(resolve, ms));
+}
+
 export interface CollectionInfo {
   name: string;
   vectorSize: number;
@@ -24,9 +75,44 @@ export interface SparseVector {
 export class QdrantManager {
   private log = logger.child({ component: "qdrant" });
   private client: QdrantClient;
+  private readonly retryBaseMs: number;
+  private readonly maxRetries: number;
 
-  constructor(url: string = "http://localhost:6333", apiKey?: string) {
+  constructor(
+    url: string = "http://localhost:6333",
+    apiKey?: string,
+    opts: { retryBaseMs?: number; maxRetries?: number } = {}
+  ) {
     this.client = new QdrantClient({ url, apiKey });
+    this.retryBaseMs = opts.retryBaseMs ?? 300;
+    this.maxRetries = opts.maxRetries ?? 3;
+  }
+
+  /**
+   * Runs a Qdrant client call, retrying only transient connection errors with
+   * exponential backoff + jitter. Non-transient errors (404, auth, server errors) throw
+   * immediately. Guards against the intermittent macOS dual-NIC EHOSTUNREACH where the
+   * LAN path is momentarily unavailable while ARP re-resolves.
+   */
+  private async withRetry<T>(op: string, fn: () => Promise<T>): Promise<T> {
+    let attempt = 0;
+    for (;;) {
+      try {
+        return await fn();
+      } catch (error) {
+        if (attempt >= this.maxRetries || !isTransientNetworkError(error)) {
+          throw error;
+        }
+        attempt++;
+        const backoff = this.retryBaseMs * 3 ** (attempt - 1);
+        const delay = Math.round(backoff * (0.8 + Math.random() * 0.4)); // ±20% jitter
+        this.log.warn(
+          { op, attempt, maxRetries: this.maxRetries, delayMs: delay, code: errCode(error) },
+          "transient Qdrant network error — retrying (LAN path may be flapping)"
+        );
+        await sleep(delay);
+      }
+    }
   }
 
   /**
@@ -79,25 +165,34 @@ export class QdrantManager {
       };
     }
 
-    await this.client.createCollection(name, config);
+    await this.withRetry("createCollection", () => this.client.createCollection(name, config));
   }
 
   async collectionExists(name: string): Promise<boolean> {
     try {
-      await this.client.getCollection(name);
+      await this.withRetry("getCollection", () => this.client.getCollection(name));
       return true;
-    } catch {
-      return false;
+    } catch (error: any) {
+      if (isNotFoundError(error)) {
+        return false;
+      }
+      // NOT a missing collection — surface the real cause (network / auth / server error)
+      // instead of the misleading "collection does not exist".
+      const detail = errCode(error) ?? httpStatus(error) ?? error?.message ?? String(error);
+      throw new Error(
+        `Qdrant existence check for collection "${name}" failed: ${detail}. ` +
+          "This is a connectivity/service error, NOT a missing collection."
+      );
     }
   }
 
   async listCollections(): Promise<string[]> {
-    const response = await this.client.getCollections();
+    const response = await this.withRetry("getCollections", () => this.client.getCollections());
     return response.collections.map((c) => c.name);
   }
 
   async getCollectionInfo(name: string): Promise<CollectionInfo> {
-    const info = await this.client.getCollection(name);
+    const info = await this.withRetry("getCollection", () => this.client.getCollection(name));
     const vectorConfig = info.config.params.vectors;
 
     // Handle both named and unnamed vector configurations
@@ -134,7 +229,7 @@ export class QdrantManager {
 
   async deleteCollection(name: string): Promise<void> {
     this.log.debug({ collection: name }, "deleteCollection");
-    await this.client.deleteCollection(name);
+    await this.withRetry("deleteCollection", () => this.client.deleteCollection(name));
   }
 
   async addPoints(
@@ -153,10 +248,12 @@ export class QdrantManager {
         id: this.normalizeId(point.id),
       }));
 
-      await this.client.upsert(collectionName, {
-        wait: true,
-        points: normalizedPoints,
-      });
+      await this.withRetry("upsert", () =>
+        this.client.upsert(collectionName, {
+          wait: true,
+          points: normalizedPoints,
+        })
+      );
     } catch (error: any) {
       const errorMessage = error?.data?.status?.error || error?.message || String(error);
       throw new Error(`Failed to add points to collection "${collectionName}": ${errorMessage}`);
@@ -174,7 +271,7 @@ export class QdrantManager {
     // Accepts either:
     // 1. Simple format: {"category": "database"}
     // 2. Qdrant format: {must: [{key: "category", match: {value: "database"}}]}
-    let qdrantFilter;
+    let qdrantFilter: Record<string, any> | undefined;
     if (filter && Object.keys(filter).length > 0) {
       // Check if already in Qdrant format (has must/should/must_not keys)
       if (filter.must || filter.should || filter.must_not) {
@@ -193,11 +290,13 @@ export class QdrantManager {
     // Check if collection uses named vectors (hybrid mode)
     const collectionInfo = await this.getCollectionInfo(collectionName);
 
-    const results = await this.client.search(collectionName, {
-      vector: collectionInfo.hybridEnabled ? { name: "dense", vector } : vector,
-      limit,
-      filter: qdrantFilter,
-    });
+    const results = await this.withRetry("search", () =>
+      this.client.search(collectionName, {
+        vector: collectionInfo.hybridEnabled ? { name: "dense", vector } : vector,
+        limit,
+        filter: qdrantFilter,
+      })
+    );
 
     return results.map((result) => ({
       id: result.id,
@@ -212,9 +311,11 @@ export class QdrantManager {
   ): Promise<{ id: string | number; payload?: Record<string, any> } | null> {
     try {
       const normalizedId = this.normalizeId(id);
-      const points = await this.client.retrieve(collectionName, {
-        ids: [normalizedId],
-      });
+      const points = await this.withRetry("retrieve", () =>
+        this.client.retrieve(collectionName, {
+          ids: [normalizedId],
+        })
+      );
 
       if (points.length === 0) {
         return null;
@@ -224,8 +325,12 @@ export class QdrantManager {
         id: points[0].id,
         payload: points[0].payload || undefined,
       };
-    } catch {
-      return null;
+    } catch (error: any) {
+      // Genuine "not found" → null; a network/service error must surface, not be masked.
+      if (isNotFoundError(error)) {
+        return null;
+      }
+      throw error;
     }
   }
 
@@ -234,10 +339,12 @@ export class QdrantManager {
     // Normalize IDs to ensure string IDs are in UUID format
     const normalizedIds = ids.map((id) => this.normalizeId(id));
 
-    await this.client.delete(collectionName, {
-      wait: true,
-      points: normalizedIds,
-    });
+    await this.withRetry("delete", () =>
+      this.client.delete(collectionName, {
+        wait: true,
+        points: normalizedIds,
+      })
+    );
   }
 
   /**
@@ -246,10 +353,12 @@ export class QdrantManager {
    */
   async deletePointsByFilter(collectionName: string, filter: Record<string, any>): Promise<void> {
     this.log.debug({ collection: collectionName }, "deletePointsByFilter");
-    await this.client.delete(collectionName, {
-      wait: true,
-      filter: filter,
-    });
+    await this.withRetry("delete", () =>
+      this.client.delete(collectionName, {
+        wait: true,
+        filter: filter,
+      })
+    );
   }
 
   /**
@@ -266,7 +375,7 @@ export class QdrantManager {
   ): Promise<SearchResult[]> {
     this.log.debug({ collection: collectionName, limit }, "hybridSearch");
     // Convert simple key-value filter to Qdrant filter format
-    let qdrantFilter;
+    let qdrantFilter: Record<string, any> | undefined;
     if (filter && Object.keys(filter).length > 0) {
       if (filter.must || filter.should || filter.must_not) {
         qdrantFilter = filter;
@@ -285,7 +394,8 @@ export class QdrantManager {
     const prefetchLimit = Math.max(20, limit * 4);
 
     try {
-      const results = await this.client.query(collectionName, {
+      const results = await this.withRetry("query", () =>
+        this.client.query(collectionName, {
         prefetch: [
           {
             query: denseVector,
@@ -305,7 +415,8 @@ export class QdrantManager {
         },
         limit: limit,
         with_payload: true,
-      });
+        })
+      );
 
       return results.points.map((result: any) => ({
         id: result.id,
@@ -342,10 +453,12 @@ export class QdrantManager {
         payload: point.payload,
       }));
 
-      await this.client.upsert(collectionName, {
-        wait: true,
-        points: normalizedPoints,
-      });
+      await this.withRetry("upsert", () =>
+        this.client.upsert(collectionName, {
+          wait: true,
+          points: normalizedPoints,
+        })
+      );
     } catch (error: any) {
       const errorMessage = error?.data?.status?.error || error?.message || String(error);
       throw new Error(

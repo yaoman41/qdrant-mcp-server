@@ -129,6 +129,44 @@ describe("QdrantManager", () => {
 
       expect(exists).toBe(false);
     });
+
+    it("should return false on a genuine 404", async () => {
+      mockClient.getCollection.mockRejectedValue({ status: 404, message: "Not found" });
+
+      const exists = await manager.collectionExists("test");
+
+      expect(exists).toBe(false);
+    });
+
+    it("should THROW (not report missing) on a network error", async () => {
+      const netErr: any = new Error("fetch failed");
+      netErr.cause = { code: "EHOSTUNREACH" };
+      mockClient.getCollection.mockRejectedValue(netErr);
+      // fast: no real backoff delay
+      const fast = new QdrantManager("http://localhost:6333", undefined, {
+        retryBaseMs: 0,
+        maxRetries: 1,
+      });
+
+      await expect(fast.collectionExists("kb")).rejects.toThrow(/NOT a missing collection/);
+    });
+
+    it("should retry a transient EHOSTUNREACH then succeed", async () => {
+      const netErr: any = new Error("fetch failed");
+      netErr.cause = { code: "EHOSTUNREACH" };
+      mockClient.getCollection
+        .mockRejectedValueOnce(netErr)
+        .mockResolvedValueOnce({ collection_name: "kb" });
+      const fast = new QdrantManager("http://localhost:6333", undefined, {
+        retryBaseMs: 0,
+        maxRetries: 3,
+      });
+
+      const exists = await fast.collectionExists("kb");
+
+      expect(exists).toBe(true);
+      expect(mockClient.getCollection).toHaveBeenCalledTimes(2);
+    });
   });
 
   describe("listCollections", () => {
