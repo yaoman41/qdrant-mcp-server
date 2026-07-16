@@ -1,11 +1,12 @@
 import logger from "../logger.js";
 import type { EmbeddingProvider, ProviderConfig } from "./base.js";
-import { CohereEmbeddings } from "./cohere.js";
-import { OllamaEmbeddings } from "./ollama.js";
 import { OpenAIEmbeddings } from "./openai.js";
-import { VoyageEmbeddings } from "./voyage.js";
 
-export type EmbeddingProviderType = "openai" | "cohere" | "voyage" | "ollama";
+// Mordeco fork 2026-07-16: cohere / voyage / ollama providers tree-shaken.
+// Production (MCP client env + R1601 sync) uses openai/text-embedding-3-small only.
+// Sparse BM25 (sparse.ts) is NOT a dense provider and stays — hybrid_search needs it.
+// To restore a removed provider, pull from upstream mhalder/qdrant-mcp-server.
+export type EmbeddingProviderType = "openai";
 
 export interface FactoryConfig extends ProviderConfig {
   provider: EmbeddingProviderType;
@@ -13,7 +14,7 @@ export interface FactoryConfig extends ProviderConfig {
 
 export class EmbeddingProviderFactory {
   static create(config: FactoryConfig): EmbeddingProvider {
-    const { provider, model, dimensions, rateLimitConfig, apiKey, baseUrl } = config;
+    const { provider, model, dimensions, rateLimitConfig, apiKey } = config;
 
     logger.info({ provider, model }, "Creating embedding provider");
 
@@ -29,65 +30,20 @@ export class EmbeddingProviderFactory {
           rateLimitConfig
         );
 
-      case "cohere":
-        if (!apiKey) {
-          throw new Error("API key is required for Cohere provider");
-        }
-        return new CohereEmbeddings(
-          apiKey,
-          model || "embed-english-v3.0",
-          dimensions,
-          rateLimitConfig
-        );
-
-      case "voyage":
-        if (!apiKey) {
-          throw new Error("API key is required for Voyage AI provider");
-        }
-        return new VoyageEmbeddings(
-          apiKey,
-          model || "voyage-2",
-          dimensions,
-          rateLimitConfig,
-          baseUrl || "https://api.voyageai.com/v1"
-        );
-
-      case "ollama":
-        return new OllamaEmbeddings(
-          model || "nomic-embed-text",
-          dimensions,
-          rateLimitConfig,
-          baseUrl || "http://localhost:11434"
-        );
-
       default:
         throw new Error(
-          `Unknown embedding provider: ${provider}. Supported providers: openai, cohere, voyage, ollama`
+          `Unknown embedding provider: ${provider}. This Mordeco fork supports only: openai ` +
+            `(cohere/voyage/ollama tree-shaken 2026-07-16 — restore from upstream if needed)`
         );
     }
   }
 
   static createFromEnv(): EmbeddingProvider {
     const provider = (
-      process.env.EMBEDDING_PROVIDER || "ollama"
+      process.env.EMBEDDING_PROVIDER || "openai"
     ).toLowerCase() as EmbeddingProviderType;
 
-    // Select API key based on provider
-    let apiKey: string | undefined;
-    switch (provider) {
-      case "openai":
-        apiKey = process.env.OPENAI_API_KEY;
-        break;
-      case "cohere":
-        apiKey = process.env.COHERE_API_KEY;
-        break;
-      case "voyage":
-        apiKey = process.env.VOYAGE_API_KEY;
-        break;
-      case "ollama":
-        // No API key needed for local Ollama
-        break;
-    }
+    const apiKey = process.env.OPENAI_API_KEY;
 
     // Common configuration
     const model = process.env.EMBEDDING_MODEL;
@@ -101,8 +57,6 @@ export class EmbeddingProviderFactory {
         `Invalid EMBEDDING_DIMENSIONS: must be a positive integer, got "${process.env.EMBEDDING_DIMENSIONS}"`
       );
     }
-
-    const baseUrl = process.env.EMBEDDING_BASE_URL;
 
     // Rate limiting configuration
     const maxRequestsPerMinute = process.env.EMBEDDING_MAX_REQUESTS_PER_MINUTE
@@ -153,7 +107,6 @@ export class EmbeddingProviderFactory {
       dimensions,
       rateLimitConfig,
       apiKey,
-      baseUrl,
     });
   }
 }

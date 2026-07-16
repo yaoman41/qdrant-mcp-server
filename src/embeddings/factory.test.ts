@@ -1,9 +1,6 @@
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
-import { CohereEmbeddings } from "./cohere.js";
 import { EmbeddingProviderFactory } from "./factory.js";
-import { OllamaEmbeddings } from "./ollama.js";
 import { OpenAIEmbeddings } from "./openai.js";
-import { VoyageEmbeddings } from "./voyage.js";
 
 vi.mock("../logger.js", () => ({
   default: {
@@ -40,12 +37,12 @@ describe("EmbeddingProviderFactory", () => {
         ).toThrow("Unknown embedding provider: unknown");
       });
 
-      it("should list supported providers in error message", () => {
+      it("should explain tree-shake in error message (Mordeco fork: openai only)", () => {
         expect(() =>
           EmbeddingProviderFactory.create({
-            provider: "invalid" as any,
+            provider: "ollama" as any,
           })
-        ).toThrow("openai, cohere, voyage, ollama");
+        ).toThrow("supports only: openai");
       });
     });
 
@@ -104,144 +101,16 @@ describe("EmbeddingProviderFactory", () => {
         expect(provider).toBeInstanceOf(OpenAIEmbeddings);
       });
     });
-
-    describe("Cohere provider", () => {
-      it("should throw error if API key is missing", () => {
-        expect(() =>
-          EmbeddingProviderFactory.create({
-            provider: "cohere",
-          })
-        ).toThrow("API key is required for Cohere provider");
-      });
-
-      it("should create Cohere provider with API key", () => {
-        const provider = EmbeddingProviderFactory.create({
-          provider: "cohere",
-          apiKey: "test-key",
-        });
-
-        expect(provider).toBeInstanceOf(CohereEmbeddings);
-        expect(provider.getModel()).toBe("embed-english-v3.0");
-        expect(provider.getDimensions()).toBe(1024);
-      });
-
-      it("should use custom model", () => {
-        const provider = EmbeddingProviderFactory.create({
-          provider: "cohere",
-          apiKey: "test-key",
-          model: "embed-multilingual-v3.0",
-        });
-
-        expect(provider.getModel()).toBe("embed-multilingual-v3.0");
-      });
-
-      it("should use custom dimensions", () => {
-        const provider = EmbeddingProviderFactory.create({
-          provider: "cohere",
-          apiKey: "test-key",
-          dimensions: 384,
-        });
-
-        expect(provider.getDimensions()).toBe(384);
-      });
-    });
-
-    describe("Voyage provider", () => {
-      it("should throw error if API key is missing", () => {
-        expect(() =>
-          EmbeddingProviderFactory.create({
-            provider: "voyage",
-          })
-        ).toThrow("API key is required for Voyage AI provider");
-      });
-
-      it("should create Voyage provider with API key", () => {
-        const provider = EmbeddingProviderFactory.create({
-          provider: "voyage",
-          apiKey: "test-key",
-        });
-
-        expect(provider).toBeInstanceOf(VoyageEmbeddings);
-        expect(provider.getModel()).toBe("voyage-2");
-        expect(provider.getDimensions()).toBe(1024);
-      });
-
-      it("should use custom model", () => {
-        const provider = EmbeddingProviderFactory.create({
-          provider: "voyage",
-          apiKey: "test-key",
-          model: "voyage-large-2",
-        });
-
-        expect(provider.getModel()).toBe("voyage-large-2");
-        expect(provider.getDimensions()).toBe(1536);
-      });
-
-      it("should use default base URL", () => {
-        const provider = EmbeddingProviderFactory.create({
-          provider: "voyage",
-          apiKey: "test-key",
-        });
-
-        expect(provider).toBeInstanceOf(VoyageEmbeddings);
-      });
-
-      it("should use custom base URL", () => {
-        const provider = EmbeddingProviderFactory.create({
-          provider: "voyage",
-          apiKey: "test-key",
-          baseUrl: "https://custom.voyageai.com/v1",
-        });
-
-        expect(provider).toBeInstanceOf(VoyageEmbeddings);
-      });
-    });
-
-    describe("Ollama provider", () => {
-      it("should not require API key", () => {
-        const provider = EmbeddingProviderFactory.create({
-          provider: "ollama",
-        });
-
-        expect(provider).toBeInstanceOf(OllamaEmbeddings);
-        expect(provider.getModel()).toBe("nomic-embed-text");
-        expect(provider.getDimensions()).toBe(768);
-      });
-
-      it("should use custom model", () => {
-        const provider = EmbeddingProviderFactory.create({
-          provider: "ollama",
-          model: "mxbai-embed-large",
-        });
-
-        expect(provider.getModel()).toBe("mxbai-embed-large");
-        expect(provider.getDimensions()).toBe(1024);
-      });
-
-      it("should use default base URL", () => {
-        const provider = EmbeddingProviderFactory.create({
-          provider: "ollama",
-        });
-
-        expect(provider).toBeInstanceOf(OllamaEmbeddings);
-      });
-
-      it("should use custom base URL", () => {
-        const provider = EmbeddingProviderFactory.create({
-          provider: "ollama",
-          baseUrl: "http://custom:11434",
-        });
-
-        expect(provider).toBeInstanceOf(OllamaEmbeddings);
-      });
-    });
   });
 
   describe("createFromEnv", () => {
-    it("should default to Ollama provider", () => {
+    it("should default to OpenAI provider (Mordeco fork)", () => {
+      delete process.env.EMBEDDING_PROVIDER;
+      process.env.OPENAI_API_KEY = "test-key";
+
       const provider = EmbeddingProviderFactory.createFromEnv();
 
-      expect(provider).toBeInstanceOf(OllamaEmbeddings);
+      expect(provider).toBeInstanceOf(OpenAIEmbeddings);
     });
 
     it("should create OpenAI provider from environment", () => {
@@ -253,30 +122,13 @@ describe("EmbeddingProviderFactory", () => {
       expect(provider).toBeInstanceOf(OpenAIEmbeddings);
     });
 
-    it("should create Cohere provider from environment", () => {
+    it("should throw for tree-shaken provider from environment", () => {
       process.env.EMBEDDING_PROVIDER = "cohere";
       process.env.COHERE_API_KEY = "test-cohere-key";
 
-      const provider = EmbeddingProviderFactory.createFromEnv();
-
-      expect(provider).toBeInstanceOf(CohereEmbeddings);
-    });
-
-    it("should create Voyage provider from environment", () => {
-      process.env.EMBEDDING_PROVIDER = "voyage";
-      process.env.VOYAGE_API_KEY = "test-voyage-key";
-
-      const provider = EmbeddingProviderFactory.createFromEnv();
-
-      expect(provider).toBeInstanceOf(VoyageEmbeddings);
-    });
-
-    it("should create Ollama provider from environment", () => {
-      process.env.EMBEDDING_PROVIDER = "ollama";
-
-      const provider = EmbeddingProviderFactory.createFromEnv();
-
-      expect(provider).toBeInstanceOf(OllamaEmbeddings);
+      expect(() => EmbeddingProviderFactory.createFromEnv()).toThrow(
+        "supports only: openai"
+      );
     });
 
     it("should be case insensitive for provider name", () => {
@@ -308,16 +160,6 @@ describe("EmbeddingProviderFactory", () => {
       expect(provider.getDimensions()).toBe(512);
     });
 
-    it("should use custom base URL from environment", () => {
-      process.env.EMBEDDING_PROVIDER = "voyage";
-      process.env.VOYAGE_API_KEY = "test-key";
-      process.env.EMBEDDING_BASE_URL = "https://custom.voyage.com";
-
-      const provider = EmbeddingProviderFactory.createFromEnv();
-
-      expect(provider).toBeInstanceOf(VoyageEmbeddings);
-    });
-
     it("should use rate limit config from environment", () => {
       process.env.EMBEDDING_PROVIDER = "openai";
       process.env.OPENAI_API_KEY = "test-key";
@@ -328,26 +170,6 @@ describe("EmbeddingProviderFactory", () => {
       const provider = EmbeddingProviderFactory.createFromEnv();
 
       expect(provider).toBeInstanceOf(OpenAIEmbeddings);
-    });
-
-    it("should select correct API key based on provider", () => {
-      process.env.EMBEDDING_PROVIDER = "cohere";
-      process.env.OPENAI_API_KEY = "openai-key";
-      process.env.COHERE_API_KEY = "cohere-key";
-      process.env.VOYAGE_API_KEY = "voyage-key";
-
-      const provider = EmbeddingProviderFactory.createFromEnv();
-
-      expect(provider).toBeInstanceOf(CohereEmbeddings);
-    });
-
-    it("should handle Ollama without API key", () => {
-      process.env.EMBEDDING_PROVIDER = "ollama";
-      process.env.OPENAI_API_KEY = "openai-key"; // Should not use this
-
-      const provider = EmbeddingProviderFactory.createFromEnv();
-
-      expect(provider).toBeInstanceOf(OllamaEmbeddings);
     });
 
     describe("Environment variable validation", () => {

@@ -14,6 +14,7 @@ This is a Mordeco-internal fork of [mhalder/qdrant-mcp-server](https://github.co
 - All git-history indexing tools (`index_git_history`, `search_git_history`, `index_new_commits`, `get_git_index_status`, `clear_git_index`)
 - `federated_search` / `contextual_search`
 - Entire `src/code/` and `src/git/` directories (dead source removed)
+- Embedding providers `ollama` / `cohere` / `voyage` + their tests (2026-07-16 tree-shake; production uses OpenAI only. BM25 sparse stays — hybrid_search needs it)
 
 **What's kept**: 8 core tools — `create_collection` / `list_collections` / `get_collection_info` / `delete_collection` / `add_documents` / `delete_documents` / `semantic_search` / `hybrid_search`
 
@@ -27,9 +28,9 @@ This is a Mordeco-internal fork of [mhalder/qdrant-mcp-server](https://github.co
 
 ## Features
 
-- **Zero Setup**: Works out of the box with Ollama - no API keys required
-- **Privacy-First**: Local embeddings and vector storage - data never leaves your machine
-- **Multiple Providers**: Ollama (default), OpenAI, Cohere, and Voyage AI
+- **Embedding Provider**: OpenAI only (`text-embedding-3-small` default) — this fork
+  tree-shook Ollama/Cohere/Voyage on 2026-07-16 (production + R1601 sync are both OpenAI;
+  restore from upstream if ever needed). `OPENAI_API_KEY` required.
 - **Hybrid Search**: Combine semantic and keyword search for better results
 - **Semantic Search**: Natural language search with metadata filtering
 - **Configurable Prompts**: Create custom prompts for guided workflows without code changes
@@ -130,12 +131,12 @@ claude mcp add --transport http qdrant http://your-server:3000/mcp
 }
 ```
 
-**Using a different provider:**
+**Provider config (openai is the only supported provider in this fork):**
 
 ```json
 "env": {
-  "EMBEDDING_PROVIDER": "openai",  // or "cohere", "voyage"
-  "OPENAI_API_KEY": "sk-...",      // provider-specific API key
+  "EMBEDDING_PROVIDER": "openai",
+  "OPENAI_API_KEY": "sk-...",
   "QDRANT_URL": "http://localhost:6333"
 }
 ```
@@ -254,7 +255,7 @@ See [examples/](examples/) directory for detailed guides:
 | `TRANSPORT_MODE`          | "stdio" or "http"                                        | stdio                 |
 | `HTTP_PORT`               | Port for HTTP transport                                  | 3000                  |
 | `HTTP_REQUEST_TIMEOUT_MS` | Request timeout for HTTP transport (ms)                  | 300000                |
-| `EMBEDDING_PROVIDER`      | "ollama", "openai", "cohere", "voyage"                   | ollama                |
+| `EMBEDDING_PROVIDER`      | "openai" (only — fork tree-shook the rest)               | openai                |
 | `QDRANT_URL`              | Qdrant server URL                                        | http://localhost:6333 |
 | `QDRANT_API_KEY`          | API key for Qdrant authentication                        | -                     |
 | `LOG_LEVEL`               | Logging level (fatal/error/warn/info/debug/trace/silent) | info                  |
@@ -265,27 +266,16 @@ See [examples/](examples/) directory for detailed guides:
 | Variable                            | Description              | Default           |
 | ----------------------------------- | ------------------------ | ----------------- |
 | `EMBEDDING_MODEL`                   | Model name               | Provider-specific |
-| `EMBEDDING_BASE_URL`                | Custom API URL           | Provider-specific |
 | `EMBEDDING_MAX_REQUESTS_PER_MINUTE` | Rate limit               | Provider-specific |
 | `EMBEDDING_RETRY_ATTEMPTS`          | Retry count              | 3                 |
 | `EMBEDDING_RETRY_DELAY`             | Initial retry delay (ms) | 1000              |
 | `OPENAI_API_KEY`                    | OpenAI API key           | -                 |
-| `COHERE_API_KEY`                    | Cohere API key           | -                 |
-| `VOYAGE_API_KEY`                    | Voyage AI API key        | -                 |
 
-### Provider Comparison
+### Provider (Mordeco fork: OpenAI only)
 
-| Provider   | Models                                                          | Dimensions     | Rate Limit | Notes                |
-| ---------- | --------------------------------------------------------------- | -------------- | ---------- | -------------------- |
-| **Ollama** | `nomic-embed-text` (default), `mxbai-embed-large`, `all-minilm` | 768, 1024, 384 | None       | Local, no API key    |
-| **OpenAI** | `text-embedding-3-small` (default), `text-embedding-3-large`    | 1536, 3072     | 3500/min   | Cloud API            |
-| **Cohere** | `embed-english-v3.0` (default), `embed-multilingual-v3.0`       | 1024           | 100/min    | Multilingual support |
-| **Voyage** | `voyage-2` (default), `voyage-large-2`, `voyage-code-2`         | 1024, 1536     | 300/min    | Code-specialized     |
-
-**Note:** Ollama models require pulling before use:
-
-- Podman: `podman exec ollama ollama pull <model-name>`
-- Docker: `docker exec ollama ollama pull <model-name>`
+| Provider   | Models                                                       | Dimensions | Rate Limit |
+| ---------- | ------------------------------------------------------------ | ---------- | ---------- |
+| **OpenAI** | `text-embedding-3-small` (default), `text-embedding-3-large` | 1536, 3072 | 3500/min   |
 
 ## Troubleshooting
 
@@ -293,8 +283,6 @@ See [examples/](examples/) directory for detailed guides:
 | ----------------------------- | --------------------------------------------------------------------------- |
 | **Qdrant not running**        | `podman compose up -d` or `docker compose up -d`                            |
 | **Collection missing**        | Create collection first before adding documents                             |
-| **Ollama not running**        | Verify with `curl http://localhost:11434`, start with `podman compose up -d` |
-| **Model missing**             | `podman exec ollama ollama pull nomic-embed-text`                           |
 | **Rate limit errors**         | Adjust `EMBEDDING_MAX_REQUESTS_PER_MINUTE` to match your provider tier      |
 | **API key errors**            | Verify correct API key in environment configuration                         |
 | **Qdrant unauthorized**       | Set `QDRANT_API_KEY` environment variable for secured instances             |
