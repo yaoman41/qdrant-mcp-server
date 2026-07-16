@@ -143,6 +143,26 @@ async function checkOllamaAvailability() {
 const qdrant = new QdrantManager(QDRANT_URL, QDRANT_API_KEY);
 logger.info({ url: QDRANT_URL }, "Qdrant client initialized");
 
+// Collection create/delete hard-block (R1601): names from QDRANT_PROTECTED_COLLECTIONS
+// (default mordeco_kb, comma-separated). Escape: QDRANT_ALLOW_PROTECTED_WRITE=1.
+const _protectedCols = (process.env.QDRANT_PROTECTED_COLLECTIONS ?? "mordeco_kb")
+  .split(",")
+  .map((s) => s.trim())
+  .filter(Boolean);
+logger.info(
+  {
+    protectedCollections: _protectedCols,
+    allowProtectedWrite: process.env.QDRANT_ALLOW_PROTECTED_WRITE === "1",
+  },
+  "Protected collection guard loaded"
+);
+
+// add_documents supports file_path (server reads UTF-8 + chunks >1500) — no model-side content copy
+logger.info(
+  { feature: "add_documents.file_path", maxFileBytes: 5 * 1024 * 1024, chunkSize: 1500 },
+  "Document file_path ingest enabled"
+);
+
 const embeddings = EmbeddingProviderFactory.createFromEnv();
 logger.info(
   {
